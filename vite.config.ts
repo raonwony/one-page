@@ -5,6 +5,7 @@ import { VitePWA } from 'vite-plugin-pwa'
 // base './' → GitHub Pages 어느 저장소 이름에서도, 다른 호스팅에서도 그대로 동작
 export default defineConfig({
   base: './',
+  define: { __BUILD_ID__: JSON.stringify(new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC') },
   plugins: [
     react(),
     VitePWA({

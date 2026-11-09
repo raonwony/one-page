@@ -31,7 +31,7 @@ export function MemoCard(props: {
   trailing?: ReactNode
 }) {
   const { memo, selected, onTap, onLongPress, onEdit, trailing } = props
-  const canEdit = onEdit && memo.type !== 'image'
+  const canEdit = !!onEdit
   let timer: number | undefined
   const startPress = () => { timer = window.setTimeout(() => onLongPress?.(), 550) }
   const endPress = () => window.clearTimeout(timer)
@@ -56,7 +56,12 @@ export function MemoCard(props: {
           </>
         )}
         {memo.type === 'text' && <div className="memo-text clamp">{memo.body || '(빈 메모)'}</div>}
-        {memo.type === 'image' && <MemoImage id={memo.id} />}
+        {memo.type === 'image' && (
+          <>
+            {memo.body && <div className="memo-text clamp caption">{memo.body}</div>}
+            <MemoImage id={memo.id} />
+          </>
+        )}
         <div className="memo-meta">
           <span>{relativeTime(memo.createdAt)}</span>
           {memo.type === 'link' && memo.url && (

@@ -123,6 +123,12 @@ export async function updateMemoText(id: string, raw: string) {
   const db = await getDb()
   const memo = await db.get('memos', id)
   if (!memo) return
+  if (memo.type === 'image') {
+    // 사진 메모지는 사진을 그대로 두고 글(설명)만 바꾼다.
+    await db.put('memos', { ...memo, body: t, updatedAt: nowIso() })
+    await afterWrite()
+    return
+  }
   const isLink = looksLikeUrl(t)
   await db.put('memos', {
     ...memo,
@@ -147,28 +153,27 @@ export async function createImageMemo(blob: Blob, ext: string) {
 }
 
 /**
- * 빠른 메모 저장: 글과 이미지를 한 번에 받은함에 넣는다.
- * 메모지 하나는 글/링크/이미지 중 한 종류라서(기존 앱과 같은 구조), 글과 이미지는 각각의 메모지로 저장된다.
- * 받은함은 최신순이라 글이 위, 사진이 그 아래에 오도록 생성 시각을 1ms씩 어긋나게 한다.
+ * 빠른 메모 저장: 글과 사진을 하나의 메모지로 저장한다.
+ * 메모지는 사진을 한 장만 가질 수 있어서(기존 앱과 같은 구조), 첫 번째 사진은 글과 함께 한 메모지가 되고
+ * 나머지 사진은 각각 사진 메모지로 따로 저장된다. (글은 사진 메모지의 body에 들어간다)
  */
 export async function createCaptured(raw: string, images: { blob: Blob; ext: string }[]) {
   const t = raw.trim()
   if (!t && images.length === 0) return
   const db = await getDb()
+  if (images.length === 0) {
+    await createFromRawText(t)
+    return
+  }
   const base = Date.now()
   const stamp = (i: number) => new Date(base + i).toISOString()
-  for (let i = 0; i < images.length; i++) {
+  // 첫 사진(+글)이 받은함 맨 위에 오도록 생성 시각을 가장 늦게 준다.
+  for (let i = images.length - 1; i >= 0; i--) {
     const memo = blankMemo('image')
     memo.imageExt = images[i].ext
+    if (i === 0) memo.body = t
     memo.createdAt = memo.updatedAt = stamp(images.length - 1 - i)
     await db.put('images', { id: memo.id, blob: images[i].blob, ext: images[i].ext })
-    await db.put('memos', memo)
-  }
-  if (t) {
-    const memo = blankMemo(looksLikeUrl(t) ? 'link' : 'text')
-    if (memo.type === 'link') memo.url = t
-    else memo.body = t
-    memo.createdAt = memo.updatedAt = stamp(images.length)
     await db.put('memos', memo)
   }
   await afterWrite()

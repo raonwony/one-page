@@ -106,3 +106,4 @@ h3 { font-size: 16px; font-weight: 600; margin: 0 0 8px; }
 .thumb button { position: absolute; top: -6px; right: -6px; width: 24px; height: 24px; border-radius: 50%; border: 0; background: #333; color: #fff; display: grid; place-items: center; padding: 0; }
 .sync-pill { position: fixed; z-index: 6; top: calc(3px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); padding: 0 10px; border-radius: 999px; font-size: 10px; line-height: 16px; background: var(--surface-hi); color: var(--text-dim); pointer-events: none; }
 .sync-pill.busy { color: var(--orange); }
+.memo-text.caption { margin-bottom: 8px; }

@@ -240,7 +240,17 @@ class HttpError extends Error {
 }
 
 async function api(t: string, url: string, init: RequestInit = {}): Promise<Response> {
-  const r = await fetch(url, { ...init, headers: { ...(init.headers ?? {}), Authorization: `Bearer ${t}` } })
+  // 응답이 없는 요청이 동기화 전체를 영원히 막지 않도록 60초 뒤 중단한다.
+  const ctl = new AbortController()
+  const timer = window.setTimeout(() => ctl.abort(), 60_000)
+  let r: Response
+  try {
+    r = await fetch(url, { ...init, signal: ctl.signal, headers: { ...(init.headers ?? {}), Authorization: `Bearer ${t}` } })
+  } catch (e) {
+    throw ctl.signal.aborted ? new Error('드라이브 응답이 너무 느려요. 잠시 뒤 다시 시도할게요.') : e
+  } finally {
+    window.clearTimeout(timer)
+  }
   if (!r.ok) throw new HttpError(r.status, `Drive 요청 실패 (${r.status})`)
   return r
 }

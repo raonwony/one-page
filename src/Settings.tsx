@@ -78,6 +78,7 @@ export function SettingsScreen({ toast }: { toast: (m: string) => void }) {
           </div>
         </div>
 
+        <p className="hint">버전 {__BUILD_ID__}</p>
         <p className="hint">변경하면 몇 초 뒤 자동으로 올라가고, 앱을 닫거나 다시 열 때도 동기화돼요. 로그인이 풀려도 메모는 이 기기에 계속 저장돼요.</p>
       </div>
     </>

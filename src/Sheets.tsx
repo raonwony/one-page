@@ -49,7 +49,7 @@ export function CaptureSheet({ editing, onClose, onSaved }: { editing?: Memo; on
     })
   }
 
-  const canSave = !busy && (text.trim().length > 0 || images.length > 0)
+  const canSave = !busy && (text.trim().length > 0 || images.length > 0 || editing?.type === 'image')
 
   async function save() {
     if (!canSave) return
@@ -60,7 +60,7 @@ export function CaptureSheet({ editing, onClose, onSaved }: { editing?: Memo; on
         onSaved?.('수정했어요')
       } else {
         await createCaptured(text, images.map(({ blob, ext }) => ({ blob, ext })))
-        onSaved?.(images.length ? `글·사진을 받은함에 저장했어요` : '받은함에 저장했어요')
+        onSaved?.('받은함에 저장했어요')
         // 로그인이 풀려 있으면, 저장 버튼을 누른 이 순간에 바로 다시 연결해서 올린다.
         if (getSyncState().kind === 'needsAuth') void sync(true)
       }
@@ -128,7 +128,7 @@ export function CaptureSheet({ editing, onClose, onSaved }: { editing?: Memo; on
           <Icon name="check" size={18} /> {editing ? '저장' : '받은함에 저장'}
         </button>
       </div>
-      {!editing && <p className="hint">Ctrl/⌘ + Enter로 저장{images.length > 0 && ' · 글과 사진은 각각 메모지로 저장돼요'}</p>}
+      {!editing && <p className="hint">Ctrl/⌘ + Enter로 저장{images.length > 1 && ' · 메모지 하나에 사진은 한 장이라, 두 번째 사진부터는 따로 저장돼요'}</p>}
     </Sheet>
   )
 }

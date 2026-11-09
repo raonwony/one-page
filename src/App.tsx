@@ -5,8 +5,19 @@ import { InboxScreen, NoteDetailScreen, NoteListScreen } from './Screens'
 import { SettingsScreen } from './Settings'
 import { CaptureSheet } from './Sheets'
 import { createFromRawText, useStore } from './store'
+import { isUpdateAvailable, subscribeUpdate } from './update'
 
 type Tab = 'inbox' | 'notes' | 'settings'
+
+function UpdateBanner() {
+  const has = useSyncExternalStore(subscribeUpdate, isUpdateAvailable)
+  if (!has) return null
+  return (
+    <button className="sync-banner" onClick={() => location.reload()}>
+      <Icon name="refresh" size={16} /><span>새 버전이 있어요 · 눌러서 업데이트</span>
+    </button>
+  )
+}
 
 /** 동기화가 끊기거나 실패했을 때 화면 맨 위에 눈에 띄게 알린다. 눌러서 바로 다시 연결/재시도. */
 function SyncBanner() {
@@ -82,6 +93,7 @@ export default function App() {
 
   return (
     <div className="app">
+      <UpdateBanner />
       <SyncBanner />
       <main className="screen">
         {noteId ? (
