@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
+import { getSyncState, sync } from './drive'
 import { Icon } from './Icons'
 import { MemoCard } from './MemoCard'
 import { Sheet } from './Sheet'
 import {
-  allMemos, attachMemosToNote, createFromRawText, createImageMemo, createNamedNote,
+  allMemos, attachMemosToNote, createCaptured, createNamedNote,
   memosOfNote, namedNotes, updateMemoText, updateNamedNote, useStore, dateNotes,
 } from './store'
 import { DATE_NOTE_ICON, DEFAULT_NOTE_ICON, NOTE_ICONS, type Memo, type Note } from './types'
@@ -15,31 +16,54 @@ const IMAGE_EXTS: Record<string, string> = {
 
 // ---------------- 빠른 메모 ----------------
 
+interface Pending { key: string; blob: Blob; ext: string; url: string }
+
 export function CaptureSheet({ editing, onClose, onSaved }: { editing?: Memo; onClose: () => void; onSaved?: (msg: string) => void }) {
   const init = editing ? (editing.type === 'link' ? editing.url ?? '' : editing.body) : ''
   const [text, setText] = useState(init)
+  const [images, setImages] = useState<Pending[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const ref = useRef<HTMLTextAreaElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const imagesRef = useRef<Pending[]>([])
+  imagesRef.current = images
   useEffect(() => { ref.current?.focus() }, [])
+  // 시트가 닫힐 때 미리보기 주소를 정리한다.
+  useEffect(() => () => imagesRef.current.forEach((i) => URL.revokeObjectURL(i.url)), [])
 
-  async function saveImage(blob: Blob) {
-    const ext = IMAGE_EXTS[blob.type] ?? 'png'
-    setBusy(true)
-    await createImageMemo(blob, ext)
-    onSaved?.('이미지를 받은함에 저장했어요')
-    onClose()
+  function addImages(blobs: Blob[]) {
+    setError(null)
+    setImages((prev) => [
+      ...prev,
+      ...blobs.map((blob) => ({
+        key: crypto.randomUUID(), blob, ext: IMAGE_EXTS[blob.type] ?? 'png', url: URL.createObjectURL(blob),
+      })),
+    ])
   }
 
+  function removeImage(key: string) {
+    setImages((prev) => {
+      prev.filter((i) => i.key === key).forEach((i) => URL.revokeObjectURL(i.url))
+      return prev.filter((i) => i.key !== key)
+    })
+  }
+
+  const canSave = !busy && (text.trim().length > 0 || images.length > 0)
+
   async function save() {
-    const t = text.trim()
-    if (!t || busy) return
+    if (!canSave) return
     setBusy(true)
     try {
-      if (editing) await updateMemoText(editing.id, t)
-      else await createFromRawText(t)
-      onSaved?.(editing ? '수정했어요' : '받은함에 저장했어요')
+      if (editing) {
+        await updateMemoText(editing.id, text.trim())
+        onSaved?.('수정했어요')
+      } else {
+        await createCaptured(text, images.map(({ blob, ext }) => ({ blob, ext })))
+        onSaved?.(images.length ? `글·사진을 받은함에 저장했어요` : '받은함에 저장했어요')
+        // 로그인이 풀려 있으면, 저장 버튼을 누른 이 순간에 바로 다시 연결해서 올린다.
+        if (getSyncState().kind === 'needsAuth') void sync(true)
+      }
       onClose()
     } catch (e) {
       setBusy(false)
@@ -51,11 +75,13 @@ export function CaptureSheet({ editing, onClose, onSaved }: { editing?: Memo; on
     setError(null)
     try {
       const items = await navigator.clipboard.read()
+      const blobs: Blob[] = []
       for (const item of items) {
         const type = item.types.find((t) => t.startsWith('image/'))
-        if (type) return await saveImage(await item.getType(type))
+        if (type) blobs.push(await item.getType(type))
       }
-      setError('클립보드에 이미지가 없어요')
+      if (blobs.length) addImages(blobs)
+      else setError('클립보드에 이미지가 없어요')
     } catch {
       setError('클립보드를 읽지 못했어요. 입력창에 직접 붙여넣거나 사진 버튼을 써 주세요.')
     }
@@ -72,26 +98,37 @@ export function CaptureSheet({ editing, onClose, onSaved }: { editing?: Memo; on
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') void save() }}
         onPaste={(e) => {
-          const file = Array.from(e.clipboardData.files).find((f) => f.type.startsWith('image/'))
-          if (file && !editing) { e.preventDefault(); void saveImage(file) }
+          if (editing) return
+          const files = Array.from(e.clipboardData.files).filter((f) => f.type.startsWith('image/'))
+          if (files.length) { e.preventDefault(); addImages(files) }
         }}
       />
+      {images.length > 0 && (
+        <div className="thumbs">
+          {images.map((i) => (
+            <div key={i.key} className="thumb">
+              <img src={i.url} alt="" />
+              <button aria-label="사진 빼기" onClick={() => removeImage(i.key)}><Icon name="x" size={14} /></button>
+            </div>
+          ))}
+        </div>
+      )}
       {error && <p className="hint error">{error}</p>}
       <div className="row">
         {!editing && (
           <>
             <button className="icon-btn" aria-label="클립보드 이미지 붙여넣기" onClick={pasteFromClipboard}><Icon name="paste" /></button>
             <button className="icon-btn" aria-label="사진 고르기" onClick={() => fileRef.current?.click()}><Icon name="image" /></button>
-            <input ref={fileRef} type="file" accept="image/*" hidden
-              onChange={(e) => { const f = e.target.files?.[0]; if (f) void saveImage(f) }} />
+            <input ref={fileRef} type="file" accept="image/*" multiple hidden
+              onChange={(e) => { addImages(Array.from(e.target.files ?? [])); e.target.value = '' }} />
           </>
         )}
         <span className="grow" />
-        <button className="btn primary" disabled={busy || !text.trim()} onClick={save}>
+        <button className="btn primary" disabled={!canSave} onClick={save}>
           <Icon name="check" size={18} /> {editing ? '저장' : '받은함에 저장'}
         </button>
       </div>
-      {!editing && <p className="hint">Ctrl/⌘ + Enter로 저장</p>}
+      {!editing && <p className="hint">Ctrl/⌘ + Enter로 저장{images.length > 0 && ' · 글과 사진은 각각 메모지로 저장돼요'}</p>}
     </Sheet>
   )
 }

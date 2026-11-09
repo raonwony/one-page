@@ -5,6 +5,7 @@ import type { SyncPayload } from './types'
 const SCOPE = 'https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/userinfo.email'
 const LS_SIGNED_IN = 'onepage.signedIn'
 const LS_EMAIL = 'onepage.email'
+const LS_PENDING = 'onepage.pending'
 
 type TokenResponse = { access_token?: string; expires_in?: number; error?: string }
 type TokenClient = { requestAccessToken: (o?: { prompt?: string; login_hint?: string }) => void }
@@ -56,6 +57,11 @@ export function subscribeSync(cb: () => void) {
   return () => listeners.delete(cb)
 }
 export const getSyncState = () => syncState
+
+// 아직 드라이브에 올리지 못한 변경이 있는지. 앱을 닫았다 열어도 유지된다.
+let changeSeq = safeGet(LS_PENDING) === '1' ? 1 : 0
+let syncedSeq = 0
+export const hasPendingChanges = () => changeSeq > syncedSeq
 
 // ---------------- Google Identity Services ----------------
 
@@ -188,6 +194,7 @@ export function sync(interactive = false): Promise<boolean> {
 
 async function doSync(interactive: boolean): Promise<boolean> {
   const email = 'email' in syncState ? syncState.email : null
+  const seqAtStart = changeSeq
   setState({ kind: 'syncing', email })
   try {
     let t: string
@@ -203,11 +210,21 @@ async function doSync(interactive: boolean): Promise<boolean> {
     } catch (e) {
       if (e instanceof HttpError && e.status === 401) {
         token = null
-        t = await getToken(interactive)
+        try {
+          t = await getToken(interactive)
+        } catch (e2) {
+          if (interactive) throw e2
+          setState({ kind: 'needsAuth', email })
+          return false
+        }
         await runSync(t)
       } else throw e
     }
+    syncedSeq = seqAtStart
+    if (!hasPendingChanges()) safeSet(LS_PENDING, null)
     setState({ kind: 'idle', email, lastSyncAt: Date.now() })
+    // 동기화하는 동안 새로 바뀐 내용이 있으면 한 번 더 올린다.
+    if (hasPendingChanges()) queueSync(500)
     return true
   } catch (e) {
     if (e instanceof HttpError && e.status === 401) setState({ kind: 'needsAuth', email })
@@ -270,20 +287,30 @@ async function runSync(t: string) {
 // ---------------- 자동 동기화 ----------------
 
 let debounce: number | undefined
-/** 로컬에서 무언가 바뀌었을 때 잠시 뒤 조용히 올린다. */
+function queueSync(delayMs: number) {
+  window.clearTimeout(debounce)
+  debounce = window.setTimeout(() => void sync(false), delayMs)
+}
+
+/** 로컬에서 무언가 바뀌었을 때 호출된다. 올리지 못한 변경으로 기록하고 잠시 뒤 조용히 올린다. */
 export function scheduleSync() {
   if (syncState.kind === 'signedOut') return
-  window.clearTimeout(debounce)
-  debounce = window.setTimeout(() => void sync(false), 4000)
+  changeSeq++
+  safeSet(LS_PENDING, '1')
+  setState(syncState) // 화면의 "올리지 못한 변경" 표시 갱신
+  queueSync(4000)
 }
 
 export function startAutoSync() {
   void sync(false)
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') void sync(false)
-    else {
-      window.clearTimeout(debounce)
-      void sync(false)
-    }
-  })
+  const kick = () => {
+    window.clearTimeout(debounce)
+    void sync(false)
+  }
+  document.addEventListener('visibilitychange', kick)
+  window.addEventListener('online', kick)
+  window.addEventListener('focus', kick)
+  window.addEventListener('pagehide', kick)
+  // 앱을 켜 둔 채로도 주기적으로 다른 기기의 변경을 받아오고, 실패했던 업로드를 다시 시도한다.
+  window.setInterval(() => { if (document.visibilityState === 'visible') void sync(false) }, 2 * 60_000)
 }

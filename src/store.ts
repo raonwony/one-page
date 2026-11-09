@@ -146,6 +146,34 @@ export async function createImageMemo(blob: Blob, ext: string) {
   await afterWrite()
 }
 
+/**
+ * 빠른 메모 저장: 글과 이미지를 한 번에 받은함에 넣는다.
+ * 메모지 하나는 글/링크/이미지 중 한 종류라서(기존 앱과 같은 구조), 글과 이미지는 각각의 메모지로 저장된다.
+ * 받은함은 최신순이라 글이 위, 사진이 그 아래에 오도록 생성 시각을 1ms씩 어긋나게 한다.
+ */
+export async function createCaptured(raw: string, images: { blob: Blob; ext: string }[]) {
+  const t = raw.trim()
+  if (!t && images.length === 0) return
+  const db = await getDb()
+  const base = Date.now()
+  const stamp = (i: number) => new Date(base + i).toISOString()
+  for (let i = 0; i < images.length; i++) {
+    const memo = blankMemo('image')
+    memo.imageExt = images[i].ext
+    memo.createdAt = memo.updatedAt = stamp(images.length - 1 - i)
+    await db.put('images', { id: memo.id, blob: images[i].blob, ext: images[i].ext })
+    await db.put('memos', memo)
+  }
+  if (t) {
+    const memo = blankMemo(looksLikeUrl(t) ? 'link' : 'text')
+    if (memo.type === 'link') memo.url = t
+    else memo.body = t
+    memo.createdAt = memo.updatedAt = stamp(images.length)
+    await db.put('memos', memo)
+  }
+  await afterWrite()
+}
+
 export async function getImageBlob(memoId: string): Promise<Blob | null> {
   const db = await getDb()
   return (await db.get('images', memoId))?.blob ?? null

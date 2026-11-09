@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { getSyncState, hasPendingChanges, subscribeSync, sync } from './drive'
 import { Icon } from './Icons'
 import { InboxScreen, NoteDetailScreen, NoteListScreen } from './Screens'
 import { SettingsScreen } from './Settings'
@@ -6,6 +7,22 @@ import { CaptureSheet } from './Sheets'
 import { createFromRawText, useStore } from './store'
 
 type Tab = 'inbox' | 'notes' | 'settings'
+
+/** 동기화가 끊기거나 실패했을 때 화면 맨 위에 눈에 띄게 알린다. 눌러서 바로 다시 연결/재시도. */
+function SyncBanner() {
+  const st = useSyncExternalStore(subscribeSync, getSyncState)
+  const pending = useSyncExternalStore(subscribeSync, hasPendingChanges)
+  if (st.kind !== 'needsAuth' && st.kind !== 'error') return null
+  const msg = st.kind === 'needsAuth'
+    ? (pending ? '구글 연결이 끊겨서 아직 올리지 못한 메모가 있어요' : '구글 연결이 끊겼어요')
+    : (pending ? '동기화에 실패해서 아직 올리지 못한 메모가 있어요' : '동기화에 실패했어요')
+  return (
+    <button className="sync-banner" onClick={() => void sync(true)}>
+      <Icon name="refresh" size={16} />
+      <span>{msg} · 눌러서 {st.kind === 'needsAuth' ? '다시 연결' : '다시 시도'}</span>
+    </button>
+  )
+}
 
 export default function App() {
   const s = useStore()
@@ -56,6 +73,7 @@ export default function App() {
 
   return (
     <div className="app">
+      <SyncBanner />
       <main className="screen">
         {noteId ? (
           <NoteDetailScreen noteId={noteId} back={closeNote} toast={toast} />
