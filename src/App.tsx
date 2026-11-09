@@ -12,6 +12,15 @@ type Tab = 'inbox' | 'notes' | 'settings'
 function SyncBanner() {
   const st = useSyncExternalStore(subscribeSync, getSyncState)
   const pending = useSyncExternalStore(subscribeSync, hasPendingChanges)
+  if (st.kind === 'syncing' || (st.kind === 'idle' && st.lastSyncAt)) {
+    // 올라가는 중인지/올라갔는지 작게 보여 줘서, 믿고 앱을 닫아도 되는지 알 수 있게 한다.
+    const busy = st.kind === 'syncing' || pending
+    return (
+      <div className={'sync-pill' + (busy ? ' busy' : '')} role="status">
+        {busy ? '동기화 중…' : `✓ 동기화됨 ${new Date((st as { lastSyncAt?: number }).lastSyncAt ?? Date.now()).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}`}
+      </div>
+    )
+  }
   if (st.kind !== 'needsAuth' && st.kind !== 'error') return null
   const msg = st.kind === 'needsAuth'
     ? (pending ? '구글 연결이 끊겨서 아직 올리지 못한 메모가 있어요' : '구글 연결이 끊겼어요')

@@ -6,6 +6,7 @@ const SCOPE = 'https://www.googleapis.com/auth/drive.appdata https://www.googlea
 const LS_SIGNED_IN = 'onepage.signedIn'
 const LS_EMAIL = 'onepage.email'
 const LS_PENDING = 'onepage.pending'
+const LS_REMOTE_MOD = 'onepage.remoteModified' // 마지막으로 맞춰 본 드라이브 파일의 수정 시각
 
 type TokenResponse = { access_token?: string; expires_in?: number; error?: string }
 type TokenClient = { requestAccessToken: (o?: { prompt?: string; login_hint?: string }) => void }
@@ -166,6 +167,7 @@ export function signOut() {
   token = null
   safeSet(LS_SIGNED_IN, null)
   safeSet(LS_EMAIL, null)
+  safeSet(LS_REMOTE_MOD, null) // 다른 계정으로 로그인해도 처음부터 다시 맞추도록
   setState({ kind: 'signedOut' })
 }
 
@@ -206,7 +208,7 @@ async function doSync(interactive: boolean): Promise<boolean> {
       return false
     }
     try {
-      await runSync(t)
+      await runSync(t, seqAtStart > syncedSeq)
     } catch (e) {
       if (e instanceof HttpError && e.status === 401) {
         token = null
@@ -217,7 +219,7 @@ async function doSync(interactive: boolean): Promise<boolean> {
           setState({ kind: 'needsAuth', email })
           return false
         }
-        await runSync(t)
+        await runSync(t, seqAtStart > syncedSeq)
       } else throw e
     }
     syncedSeq = seqAtStart
@@ -243,45 +245,58 @@ async function api(t: string, url: string, init: RequestInit = {}): Promise<Resp
   return r
 }
 
-async function runSync(t: string) {
+/**
+ * 가볍게 확인하고 필요한 만큼만 주고받는다.
+ * - 드라이브 파일의 수정 시각이 우리가 마지막으로 본 것과 같으면 내려받지 않는다.
+ * - 이 기기에 올리지 못한 변경이 없고 처음 맞추는 것도 아니면 올리지 않는다.
+ */
+async function runSync(t: string, hadPending: boolean) {
   const list = await api(
     t,
     'https://www.googleapis.com/drive/v3/files?' +
       new URLSearchParams({
         spaces: 'appDataFolder',
         q: `name = '${BACKUP_FILE_NAME}' and trashed = false`,
-        fields: 'files(id,name)',
+        fields: 'files(id,modifiedTime)',
       }),
   )
-  const files = ((await list.json()) as { files?: { id: string }[] }).files ?? []
+  const files = ((await list.json()) as { files?: { id: string; modifiedTime?: string }[] }).files ?? []
   const fileId = files[0]?.id ?? null
+  const remoteMod = files[0]?.modifiedTime ?? null
+  const lastSeen = safeGet(LS_REMOTE_MOD)
 
-  if (fileId) {
+  if (fileId && remoteMod !== lastSeen) {
     const dl = await api(t, `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`)
     const remote = (await dl.json()) as SyncPayload
     await mergeRemote(remote)
+    safeSet(LS_REMOTE_MOD, remoteMod)
   }
 
-  const merged = await exportPayload()
-  const body = JSON.stringify(merged)
+  const firstTime = lastSeen === null
+  if (fileId && !hadPending && !firstTime) return // 받기만 하면 되는 경우
+
+  const body = JSON.stringify(await exportPayload())
+  let res: Response
   if (fileId) {
-    await api(t, `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body,
-    })
+    res = await api(
+      t,
+      `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media&fields=modifiedTime`,
+      { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body },
+    )
   } else {
     const boundary = 'onepage' + Math.random().toString(36).slice(2)
     const meta = JSON.stringify({ name: BACKUP_FILE_NAME, parents: ['appDataFolder'] })
     const multipart =
       `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n` +
       `--${boundary}\r\nContent-Type: application/json\r\n\r\n${body}\r\n--${boundary}--`
-    await api(t, 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+    res = await api(t, 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=modifiedTime', {
       method: 'POST',
       headers: { 'Content-Type': `multipart/related; boundary=${boundary}` },
       body: multipart,
     })
   }
+  const mod = ((await res.json()) as { modifiedTime?: string }).modifiedTime
+  if (mod) safeSet(LS_REMOTE_MOD, mod)
 }
 
 // ---------------- 자동 동기화 ----------------
@@ -298,7 +313,7 @@ export function scheduleSync() {
   changeSeq++
   safeSet(LS_PENDING, '1')
   setState(syncState) // 화면의 "올리지 못한 변경" 표시 갱신
-  queueSync(4000)
+  queueSync(1200)
 }
 
 export function startAutoSync() {
@@ -311,6 +326,6 @@ export function startAutoSync() {
   window.addEventListener('online', kick)
   window.addEventListener('focus', kick)
   window.addEventListener('pagehide', kick)
-  // 앱을 켜 둔 채로도 주기적으로 다른 기기의 변경을 받아오고, 실패했던 업로드를 다시 시도한다.
-  window.setInterval(() => { if (document.visibilityState === 'visible') void sync(false) }, 2 * 60_000)
+  // 앱을 켜 둔 동안 20초마다 다른 기기의 변경을 받아오고(바뀐 게 없으면 아주 가벼운 확인만), 실패했던 업로드도 다시 시도한다.
+  window.setInterval(() => { if (document.visibilityState === 'visible') void sync(false) }, 20_000)
 }
