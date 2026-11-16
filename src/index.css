@@ -107,3 +107,7 @@ h3 { font-size: 16px; font-weight: 600; margin: 0 0 8px; }
 .sync-pill { position: fixed; z-index: 6; top: calc(3px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); padding: 0 10px; border-radius: 999px; font-size: 10px; line-height: 16px; background: var(--surface-hi); color: var(--text-dim); pointer-events: none; }
 .sync-pill.busy { color: var(--orange); }
 .memo-text.caption { margin-bottom: 8px; }
+
+/* 💡 아이디어 표시 버튼 */
+.icon-btn.idea { font-size: 20px; line-height: 1; filter: grayscale(1); opacity: .6; }
+.icon-btn.idea.on { filter: none; opacity: 1; background: var(--surface-hi); box-shadow: inset 0 0 0 2px var(--orange); }

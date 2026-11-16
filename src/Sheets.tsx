@@ -9,6 +9,7 @@ import {
 } from './store'
 import { DATE_NOTE_ICON, DEFAULT_NOTE_ICON, NOTE_ICONS, type Memo, type Note } from './types'
 import { koreanDate } from './format'
+import { isIdeaBody } from './obsidianExport'
 
 const IMAGE_EXTS: Record<string, string> = {
   'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif', 'image/bmp': 'bmp', 'image/heic': 'heic',
@@ -47,6 +48,13 @@ export function CaptureSheet({ editing, onClose, onSaved }: { editing?: Memo; on
       prev.filter((i) => i.key === key).forEach((i) => URL.revokeObjectURL(i.url))
       return prev.filter((i) => i.key !== key)
     })
+  }
+
+  const isIdea = isIdeaBody(text)
+  function toggleIdea() {
+    // 저장 형식은 그대로 두고, 본문 맨 앞의 "💡 " 글자로만 표시한다.
+    setText(isIdea ? text.replace(/^\s*💡[ \t]?/, '') : '💡 ' + text)
+    ref.current?.focus()
   }
 
   const canSave = !busy && (text.trim().length > 0 || images.length > 0 || editing?.type === 'image')
@@ -115,6 +123,7 @@ export function CaptureSheet({ editing, onClose, onSaved }: { editing?: Memo; on
       )}
       {error && <p className="hint error">{error}</p>}
       <div className="row">
+        <button className={'icon-btn idea' + (isIdea ? ' on' : '')} aria-label="아이디어 표시 (💡)" aria-pressed={isIdea} onClick={toggleIdea}>💡</button>
         {!editing && (
           <>
             <button className="icon-btn" aria-label="클립보드 이미지 붙여넣기" onClick={pasteFromClipboard}><Icon name="paste" /></button>

@@ -183,6 +183,9 @@ function explain(e: unknown): string {
 // ---------------- Drive 동기화 ----------------
 
 let running: Promise<boolean> | null = null
+let syncDoneHook: (() => void) | null = null
+/** 동기화가 성공적으로 끝날 때마다 불린다 (옵시디언 내보내기 등). */
+export function onSyncDone(fn: () => void) { syncDoneHook = fn }
 
 /**
  * 원격 파일을 받아 병합한 뒤, 병합된 전체 상태를 다시 올린다.
@@ -225,6 +228,7 @@ async function doSync(interactive: boolean): Promise<boolean> {
     syncedSeq = seqAtStart
     if (!hasPendingChanges()) safeSet(LS_PENDING, null)
     setState({ kind: 'idle', email, lastSyncAt: Date.now() })
+    try { syncDoneHook?.() } catch { /* 내보내기 문제가 동기화를 막지 않도록 */ }
     // 동기화하는 동안 새로 바뀐 내용이 있으면 한 번 더 올린다.
     if (hasPendingChanges()) queueSync(500)
     return true
