@@ -28,9 +28,10 @@ export function MemoCard(props: {
   onTap?: () => void
   onLongPress?: () => void
   onEdit?: () => void
+  onDelete?: () => void
   trailing?: ReactNode
 }) {
-  const { memo, selected, onTap, onLongPress, onEdit, trailing } = props
+  const { memo, selected, onTap, onLongPress, onEdit, onDelete, trailing } = props
   const canEdit = !!onEdit
   let timer: number | undefined
   const startPress = () => { timer = window.setTimeout(() => onLongPress?.(), 550) }
@@ -74,6 +75,11 @@ export function MemoCard(props: {
       {canEdit && (
         <button className="icon-btn" aria-label="수정" onClick={(e) => { e.stopPropagation(); onEdit?.() }}>
           <Icon name="edit" size={18} />
+        </button>
+      )}
+      {onDelete && (
+        <button className="icon-btn" aria-label="삭제" onClick={(e) => { e.stopPropagation(); onDelete() }}>
+          <Icon name="trash" size={18} />
         </button>
       )}
       {trailing}
