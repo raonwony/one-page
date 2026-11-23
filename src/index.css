@@ -48,7 +48,7 @@ h3 { font-size: 16px; font-weight: 600; margin: 0 0 8px; }
 .memo { display: flex; align-items: flex-start; gap: 10px; padding: 14px; user-select: none; -webkit-user-select: none; }
 .memo.selected { border-color: var(--orange); }
 .memo-body { flex: 1; min-width: 0; }
-.memo-text { white-space: pre-wrap; word-break: break-word; }
+.memo-text { white-space: pre-wrap; word-break: break-word; user-select: text; -webkit-user-select: text; }
 .memo-text.clamp { display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
 .memo-host { display: flex; align-items: center; gap: 4px; color: var(--orange); font-size: 12px; margin-bottom: 4px; }
 .memo-meta { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; color: var(--text-dim); font-size: 12px; }

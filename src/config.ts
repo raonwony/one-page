@@ -6,3 +6,6 @@ export const GOOGLE_CLIENT_ID: string =
   '352345649881-575nkkmg0jtouieem3ugtb4lrndtcf8h.apps.googleusercontent.com'
 
 export const BACKUP_FILE_NAME = 'note_app_backup.json'
+
+// 사람이 보는 앱 버전. 기능을 새로 배포할 때마다 하나씩 올린다. (v1 = 날짜 표시만 있던 때, v2 = 글 선택·'자리 찾은 메모' 노트 추가)
+export const APP_VERSION = 'v2'

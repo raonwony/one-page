@@ -2,7 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
 import { getSyncState, onSyncDone, scheduleSync, startAutoSync } from './drive'
-import { initStore, onLocalChange } from './store'
+import { backfillArchive, initStore, onLocalChange } from './store'
 import { refreshExportStatus, runExport } from './obsidianExport'
 import { watchForUpdates } from './update'
 import './index.css'
@@ -17,7 +17,8 @@ onLocalChange(() => {
 // 동기화가 끝난 직후에 💡 메모를 옵시디언 폴더로 내보낸다.
 onSyncDone(() => void runExport())
 watchForUpdates()
-initStore().then(() => {
+initStore().then(async () => {
+  await backfillArchive().catch(() => {}) // '자리 찾은 메모' 노트에 이미 노트로 옮겨진 메모지를 한 번 모은다
   startAutoSync()
   void runExport() // 앱을 열 때 (로그인이 풀려 있어도 이 기기의 메모는 내보낸다)
 })

@@ -26,25 +26,22 @@ export function MemoCard(props: {
   memo: Memo
   selected?: boolean | null
   onTap?: () => void
-  onLongPress?: () => void
   onEdit?: () => void
   onDelete?: () => void
   trailing?: ReactNode
 }) {
-  const { memo, selected, onTap, onLongPress, onEdit, onDelete, trailing } = props
+  const { memo, selected, onTap, onEdit, onDelete, trailing } = props
   const canEdit = !!onEdit
-  let timer: number | undefined
-  const startPress = () => { timer = window.setTimeout(() => onLongPress?.(), 550) }
-  const endPress = () => window.clearTimeout(timer)
+  // 글을 꾹 눌러 범위를 잡거나 드래그로 선택한 직후에는 카드가 선택(체크)되지 않게 한다.
+  const handleClick = () => {
+    if (window.getSelection()?.toString()) return
+    onTap?.()
+  }
 
   return (
     <div
       className={'card memo' + (selected ? ' selected' : '')}
-      onClick={onTap}
-      onPointerDown={onLongPress ? startPress : undefined}
-      onPointerUp={endPress}
-      onPointerLeave={endPress}
-      onContextMenu={onLongPress ? (e) => { e.preventDefault(); onLongPress() } : undefined}
+      onClick={handleClick}
     >
       {selected !== null && selected !== undefined && (
         <span className={'dot' + (selected ? ' on' : '')}>{selected && <Icon name="check" size={14} />}</span>

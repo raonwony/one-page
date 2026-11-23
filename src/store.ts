@@ -73,10 +73,12 @@ export function allMemos(s: State): Memo[] {
   return s.memos.filter((m) => !m.isDeleted).sort(byCreatedDesc)
 }
 
+/** 이름 있는 노트: 최근 수정 순. '자리 찾은 메모' 보관 노트는 자주 바뀌므로 항상 맨 아래. */
 export function namedNotes(s: State): Note[] {
   return s.notes
     .filter((n) => n.kind === 'named' && !n.isDeleted)
-    .sort((a, b) => parseDate(b.updatedAt) - parseDate(a.updatedAt))
+    .sort((a, b) =>
+      Number(a.id === ARCHIVE_NOTE_ID) - Number(b.id === ARCHIVE_NOTE_ID) || parseDate(b.updatedAt) - parseDate(a.updatedAt))
 }
 
 export function dateNotes(s: State): Note[] {
@@ -243,6 +245,57 @@ export async function getOrCreateDateNote(key: string): Promise<Note> {
   return note
 }
 
+// ---- "자리 찾은 메모" 보관 노트 ----
+// 받은함에서 노트로 옮겨진 메모지는 받은함에서는 사라지지만, 이 노트에도 한 장씩 함께 걸어 둔다(원본은 하나, 연결만 둘).
+// id를 고정해 두면 폰·맥에서 각각 만들어도 동기화될 때 하나로 합쳐진다. 메모지 연결 id도 메모지별로 고정이다.
+export const ARCHIVE_NOTE_ID = 'archive-placed-memos'
+export const ARCHIVE_NOTE_NAME = '자리 찾은 메모'
+const archiveLinkId = (memoId: string) => `archive-${memoId}`
+
+/** 보관 노트가 없으면 만든다. 사용자가 지운 상태면 null(= 보관하지 않음). */
+async function ensureArchiveNote(db: Awaited<ReturnType<typeof getDb>>): Promise<Note | null> {
+  const found = await db.get('notes', ARCHIVE_NOTE_ID)
+  if (found) return found.isDeleted ? null : found
+  const note: Note = { ...blankNote('named'), id: ARCHIVE_NOTE_ID, name: ARCHIVE_NOTE_NAME, icon: 'star' }
+  await db.put('notes', note)
+  return note
+}
+
+/** 메모지들을 보관 노트 맨 위에 건다. 이미 걸렸던(지금은 뺀 것도 포함) 메모지는 다시 걸지 않는다. */
+async function archiveMemos(db: Awaited<ReturnType<typeof getDb>>, memoIds: string[]) {
+  if (memoIds.length === 0) return
+  const note = await ensureArchiveNote(db)
+  if (!note) return
+  const links = (await db.getAll('links')).filter((l) => l.noteId === ARCHIVE_NOTE_ID)
+  const known = new Set(links.map((l) => l.id))
+  const fresh = memoIds.filter((id, i) => memoIds.indexOf(id) === i && !known.has(archiveLinkId(id)))
+  if (fresh.length === 0) return
+  const live = links.filter((l) => !l.isDeleted)
+  const top = live.length ? Math.min(...live.map((l) => l.position)) : 0
+  const createdAt = nowIso()
+  for (let i = 0; i < fresh.length; i++) {
+    await db.put('links', {
+      id: archiveLinkId(fresh[i]), noteId: ARCHIVE_NOTE_ID, memoId: fresh[i],
+      position: top - fresh.length + i, createdAt, isDeleted: false,
+    })
+  }
+}
+
+/** 앱을 처음 이 기능으로 열 때 한 번: 이미 노트에 들어가 있는 메모지들도 보관 노트에 모은다. */
+export async function backfillArchive() {
+  const db = await getDb()
+  if (await db.get('notes', ARCHIVE_NOTE_ID)) return
+  const [memos, notes, links] = await Promise.all([db.getAll('memos'), db.getAll('notes'), db.getAll('links')])
+  const liveNotes = new Set(notes.filter((n) => !n.isDeleted).map((n) => n.id))
+  const placed = new Set(
+    links.filter((l) => !l.isDeleted && l.noteId !== ARCHIVE_NOTE_ID && liveNotes.has(l.noteId)).map((l) => l.memoId),
+  )
+  const ids = memos.filter((m) => !m.isDeleted && !m.inInbox && placed.has(m.id)).sort(byCreatedDesc).map((m) => m.id)
+  if (ids.length === 0) return
+  await archiveMemos(db, ids) // 최신 메모지가 맨 위
+  await afterWrite()
+}
+
 // ---------------- 메모지 ↔ 노트 ----------------
 
 export async function attachMemosToNote(noteId: string, memoIds: string[]) {
@@ -263,6 +316,7 @@ export async function attachMemosToNote(noteId: string, memoIds: string[]) {
   }
   const n = await db.get('notes', noteId)
   if (n) await db.put('notes', { ...n, updatedAt: now.toISOString() })
+  if (noteId !== ARCHIVE_NOTE_ID) await archiveMemos(db, memoIds)
   await afterWrite()
 }
 

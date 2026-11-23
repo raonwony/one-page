@@ -33,7 +33,7 @@ export function InboxScreen({ openNote, toast }: { openNote: (id: string) => voi
         )}
         {memos.map((m) => (
           <MemoCard key={m.id} memo={m} selected={has ? selected.has(m.id) : null}
-            onTap={() => toggle(m.id)} onLongPress={() => setDeleting(m)}
+            onTap={() => toggle(m.id)}
             onEdit={has ? undefined : () => setEditing(m)}
             onDelete={has ? undefined : () => setDeleting(m)} />
         ))}

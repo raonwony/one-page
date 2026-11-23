@@ -4,7 +4,7 @@ import { Icon } from './Icons'
 import { MemoCard } from './MemoCard'
 import { Sheet } from './Sheet'
 import {
-  allMemos, attachMemosToNote, createCaptured, createNamedNote,
+  ARCHIVE_NOTE_ID, allMemos, attachMemosToNote, createCaptured, createNamedNote,
   memosOfNote, namedNotes, updateMemoText, updateNamedNote, useStore, dateNotes,
 } from './store'
 import { DATE_NOTE_ICON, DEFAULT_NOTE_ICON, NOTE_ICONS, type Memo, type Note } from './types'
@@ -188,7 +188,7 @@ export function AttachSheet({ memoIds, onClose, onAttached }: { memoIds: string[
     <Sheet onClose={onClose}>
       <h3>어느 노트에 붙일까요?</h3>
       <div className="list">
-        {namedNotes(s).map((n) => (
+        {namedNotes(s).filter((n) => n.id !== ARCHIVE_NOTE_ID).map((n) => (
           <button key={n.id} className="list-item" onClick={() => void attach(n)}>
             <span className="avatar">{NOTE_ICONS[n.icon ?? ''] ?? NOTE_ICONS[DEFAULT_NOTE_ICON]}</span>{n.name}
           </button>
